@@ -1,0 +1,8 @@
+{
+  "name": "Energy Simulator",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {"Game": {"$path": "src/server/Game.server.lua"}},
+    "StarterPlayer": {"StarterPlayerScripts": {"Interface": {"$path": "src/client/Interface.client.lua"}}}
+  }
+}

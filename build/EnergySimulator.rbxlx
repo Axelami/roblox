@@ -1,0 +1,191 @@
+<roblox version="4">
+  <Item class="ServerScriptService" referent="0">
+    <Properties>
+      <string name="Name">ServerScriptService</string>
+    </Properties>
+    <Item class="Script" referent="1">
+      <Properties>
+        <string name="Name">Game</string>
+        <token name="RunContext">0</token>
+        <string name="Source"><![CDATA[-- All economy changes are validated and performed by the server.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local actions = Instance.new("RemoteEvent")
+actions.Name = "SimulatorAction"
+actions.Parent = ReplicatedStorage
+local states = {}
+
+local function part(name, size, position, color)
+    local p = Instance.new("Part")
+    p.Name, p.Size, p.Position = name, size, position
+    p.Anchored = true
+    p.Color = color
+    p.TopSurface = Enum.SurfaceType.Smooth
+    p.Parent = workspace
+    return p
+end
+
+part("Island", Vector3.new(160, 4, 160), Vector3.new(0, -2, 0), Color3.fromRGB(61, 148, 101))
+local spawn = Instance.new("SpawnLocation")
+spawn.Size, spawn.Position = Vector3.new(12, 1, 12), Vector3.new(0, 0.5, 20)
+spawn.Anchored, spawn.Neutral = true, true
+spawn.Parent = workspace
+
+local function station(name, position, color, action)
+    local pad = part(name, Vector3.new(16, 1, 16), position, color)
+    local gui = Instance.new("BillboardGui")
+    gui.Size, gui.StudsOffset, gui.AlwaysOnTop = UDim2.fromOffset(220, 50), Vector3.new(0, 5, 0), true
+    gui.Parent = pad
+    local label = Instance.new("TextLabel")
+    label.Size, label.BackgroundTransparency = UDim2.fromScale(1, 1), 1
+    label.Text, label.TextScaled = name, true
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.Font = Enum.Font.GothamBold
+    label.Parent = gui
+    local prompt = Instance.new("ProximityPrompt")
+    prompt.ActionText, prompt.ObjectText = "Använd", name
+    prompt.MaxActivationDistance, prompt.HoldDuration = 12, 0
+    prompt.Parent = pad
+    prompt.Triggered:Connect(function(player)
+        local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if root and (root.Position - pad.Position).Magnitude <= 16 then action(player) end
+    end)
+end
+
+local function sync(player, message)
+    local s = states[player]
+    if not s then return end
+    player.leaderstats.Mynt.Value = s.coins
+    player.leaderstats.Energi.Value = s.energy
+    player:SetAttribute("Capacity", s.capacity)
+    player:SetAttribute("Power", s.power)
+    player:SetAttribute("ToolCost", s.power * 25)
+    player:SetAttribute("BagCost", s.capacity * 2)
+    if message then actions:FireClient(player, message) end
+end
+
+station("SÄLJ ENERGI", Vector3.new(-28, 0.5, 0), Color3.fromRGB(255, 193, 61), function(player)
+    local s = states[player]
+    if not s then return end
+    local earned = s.energy
+    s.coins, s.energy = s.coins + earned, 0
+    sync(player, "Sålde energi för " .. earned .. " mynt!")
+end)
+station("UPPGRADERA VERKTYG", Vector3.new(0, 0.5, -28), Color3.fromRGB(93, 123, 255), function(player)
+    local s = states[player]
+    if not s then return end
+    local cost = s.power * 25
+    if s.coins < cost then sync(player, "Verktyget kostar " .. cost .. " mynt.") return end
+    s.coins, s.power = s.coins - cost, s.power + 1
+    sync(player, "Verktyget har uppgraderats!")
+end)
+station("STÖRRE RYGGSÄCK", Vector3.new(28, 0.5, 0), Color3.fromRGB(205, 105, 255), function(player)
+    local s = states[player]
+    if not s then return end
+    local cost = s.capacity * 2
+    if s.coins < cost then sync(player, "Ryggsäcken kostar " .. cost .. " mynt.") return end
+    s.coins, s.capacity = s.coins - cost, s.capacity + 25
+    sync(player, "Ryggsäcken har uppgraderats!")
+end)
+
+Players.PlayerAdded:Connect(function(player)
+    states[player] = {coins = 0, energy = 0, power = 1, capacity = 25, lastCollect = 0}
+    local stats = Instance.new("Folder")
+    stats.Name, stats.Parent = "leaderstats", player
+    for _, name in ipairs({"Mynt", "Energi"}) do
+        local value = Instance.new("IntValue")
+        value.Name, value.Parent = name, stats
+    end
+    sync(player)
+end)
+Players.PlayerRemoving:Connect(function(player) states[player] = nil end)
+actions.OnServerEvent:Connect(function(player, action)
+    local s = states[player]
+    if not s or action ~= "Collect" then return end
+    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return end
+    local now = os.clock()
+    if now - s.lastCollect < 0.2 then return end
+    s.lastCollect = now
+    s.energy = math.min(s.capacity, s.energy + s.power)
+    sync(player, s.energy == s.capacity and "Ryggsäcken är full! Gå till SÄLJ ENERGI." or nil)
+end)
+]]></string>
+      </Properties>
+    </Item>
+  </Item>
+  <Item class="StarterPlayer" referent="2">
+    <Properties>
+      <string name="Name">StarterPlayer</string>
+    </Properties>
+    <Item class="StarterPlayerScripts" referent="3">
+      <Properties>
+        <string name="Name">StarterPlayerScripts</string>
+      </Properties>
+      <Item class="LocalScript" referent="4">
+        <Properties>
+          <string name="Name">Interface</string>
+          <string name="Source"><![CDATA[local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+local actions = ReplicatedStorage:WaitForChild("SimulatorAction")
+local stats = player:WaitForChild("leaderstats")
+local coins, energy = stats:WaitForChild("Mynt"), stats:WaitForChild("Energi")
+local gui = Instance.new("ScreenGui")
+gui.Name, gui.ResetOnSpawn = "SimulatorHUD", false
+gui.Parent = player:WaitForChild("PlayerGui")
+local panel = Instance.new("Frame")
+panel.Size, panel.Position = UDim2.new(0.9, 0, 0, 190), UDim2.new(0.05, 0, 0, 12)
+panel.BackgroundColor3 = Color3.fromRGB(22, 29, 48)
+panel.Parent = gui
+local constraint = Instance.new("UISizeConstraint")
+constraint.MaxSize = Vector2.new(440, 190)
+constraint.Parent = panel
+local corner = Instance.new("UICorner")
+corner.CornerRadius, corner.Parent = UDim.new(0, 14), panel
+local function label(y, height, size)
+    local l = Instance.new("TextLabel")
+    l.Size, l.Position = UDim2.new(1, -24, 0, height), UDim2.fromOffset(12, y)
+    l.BackgroundTransparency, l.TextColor3 = 1, Color3.new(1, 1, 1)
+    l.Font, l.TextSize, l.TextWrapped = Enum.Font.GothamBold, size, true
+    l.Parent = panel
+    return l
+end
+label(8, 30, 24).Text = "⚡ ENERGY SIMULATOR"
+local info = label(42, 52, 18)
+local prices = label(96, 35, 14)
+label(136, 44, 13).Text = "Samla energi → sälj vid den gula plattan → uppgradera! Använd E eller tryck på stationens prompt."
+local button = Instance.new("TextButton")
+button.Size, button.Position = UDim2.fromOffset(240, 64), UDim2.new(0.5, -120, 1, -90)
+button.BackgroundColor3 = Color3.fromRGB(76, 113, 246)
+button.TextColor3, button.TextSize = Color3.new(1, 1, 1), 23
+button.Font, button.Text = Enum.Font.GothamBold, "⚡ SAMLA ENERGI"
+button.Parent = gui
+Instance.new("UICorner", button).CornerRadius = UDim.new(0, 16)
+button.Activated:Connect(function() actions:FireServer("Collect") end)
+local message = Instance.new("TextLabel")
+message.Size, message.Position = UDim2.new(0.9, 0, 0, 55), UDim2.new(0.05, 0, 1, -150)
+message.BackgroundTransparency, message.TextColor3 = 1, Color3.new(1, 1, 1)
+message.TextSize, message.TextWrapped, message.Text = 18, true, ""
+message.Parent = gui
+local function update()
+    info.Text = string.format("Mynt: %d   |   Energi: %d / %d\nEnergi per klick: %d", coins.Value, energy.Value, player:GetAttribute("Capacity") or 25, player:GetAttribute("Power") or 1)
+    prices.Text = string.format("Verktyg: %d mynt   •   Ryggsäck: %d mynt", player:GetAttribute("ToolCost") or 25, player:GetAttribute("BagCost") or 50)
+end
+coins.Changed:Connect(update)
+energy.Changed:Connect(update)
+player.AttributeChanged:Connect(update)
+local messageId = 0
+actions.OnClientEvent:Connect(function(text)
+    messageId = messageId + 1
+    local id = messageId
+    message.Text = text
+    task.delay(4, function() if id == messageId then message.Text = "" end end)
+end)
+update()
+]]></string>
+        </Properties>
+      </Item>
+    </Item>
+  </Item>
+</roblox>
